@@ -5,7 +5,7 @@ import uuid
 from langchain_core.documents import Document
 from pinecone import Pinecone, ServerlessSpec
 from langchain_pinecone import PineconeVectorStore
-from langchain_huggingface import HuggingFaceEmbeddings # Changed to HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
 
@@ -21,7 +21,7 @@ pc = Pinecone(api_key=PINECONE_API_KEY)
 embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
 # Define Pinecone index name
-INDEX_NAME = "intraintel"
+INDEX_NAME = os.environ["INDEX_NAME"] 
 
 #--- Function to get a retriever for the vector store ---
 def get_retriever():

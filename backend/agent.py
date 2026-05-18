@@ -8,11 +8,13 @@ from langchain_tavily import TavilySearch
 from pydantic import BaseModel, Field
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
-from langchain_core.runnables import RunnableConfig # <-- NEW LINE ADDED HERE
+from langchain_core.runnables import RunnableConfig 
 
 # Import API keys from config
 from config import GROQ_API_KEY, TAVILY_API_KEY
 from vectorstore import get_retriever
+
+from redis_store import get_redis_client, store_cache, get_cached_answer
 
 # --- Tools ---
 os.environ["TAVILY_API_KEY"] = TAVILY_API_KEY
@@ -82,6 +84,7 @@ def compute_confidence(state: AgentState, answer: str) -> int:
 def router_node(state: AgentState, config: RunnableConfig) -> AgentState:
 
     query = next((m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), "")
+
 
     restricted_mode = config.get("configurable", {}).get("restricted_mode", False)
 
@@ -214,6 +217,16 @@ def web_node(state: AgentState,config:RunnableConfig) -> AgentState:
 def fusion_answer_node(state: AgentState) -> AgentState:
     user_q = next((m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), "")
 
+    redis_client = get_redis_client()
+
+    cached_response = get_cached_answer(redis_client, user_q)
+
+    if cached_response:
+        return {
+            **state,
+            "messages": state["messages"] + [AIMessage(content=cached_response)]
+        }
+
     rag_context = "\n".join(state.get("rag_chunks", []))
     web_context = "\n".join(state.get("web", []))
 
@@ -289,6 +302,8 @@ def fusion_answer_node(state: AgentState) -> AgentState:
 
     confidence = compute_confidence(state, ans)
     ans += f"\n\nConfidence: {confidence}/100"
+
+    store_cache(user_q, ans)
 
     return {
         **state,

@@ -2,9 +2,9 @@ from langchain_redis import RedisConfig, RedisVectorStore
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.documents import Document
 
-def get_redis_client(host='localhost', port=6379, db=0):
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+from vectorstore import embeddings
 
+def get_redis_client(host='localhost', port=6379, db=0):
     return RedisVectorStore(
         embeddings,
         config=RedisConfig(

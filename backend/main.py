@@ -225,39 +225,44 @@ async def chat_with_agent(request: QueryRequest):
                     event_type=event_type
                 )
             )
-            print(f"Streamed Event: Step {i+1} - Node: {current_node_name} - Desc: {event_description}")
 
 
-        final_actual_state_dict = None
-        if s:
-            if '__end__' in s:
-                final_actual_state_dict = s['__end__']
-            else:
-                if list(s.keys()):
-                    final_actual_state_dict = s[list(s.keys())[0]]
+        print("--- Stream loop finished. Fetching final state values ---")
+        final_state = rag_agent.get_state(config)
+        state_messages = final_state.values.get("messages", [])
 
-        if final_actual_state_dict and "messages" in final_actual_state_dict:
-            for msg in reversed(final_actual_state_dict["messages"]):
-                if isinstance(msg, AIMessage):
-                    final_message = msg.content
-                    break
-        
-        if not final_message:
-             print("Agent finished, but no final AIMessage found in the final state after stream completion.")
-             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Agent did not return a valid response (final AI message not found).")
+        # Find the most recent AIMessage in the graph state history
+        final_ai_msg = next((m for m in reversed(state_messages) if isinstance(m, AIMessage)), None)
 
-        print(f"--- Agent Stream Ended. Final Response: {final_message[:200]}... ---")
+        if final_ai_msg and final_ai_msg.content:
+            final_message = final_ai_msg.content
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Agent did not return a valid response (final AI message not found)."
+            )
 
-        return AgentResponse(response=final_message, trace_events=trace_events_for_frontend)
+        return AgentResponse(
+            response=final_message,
+            trace_events=trace_events_for_frontend
+        )
 
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        error_details = f"Error during agent invocation: {e}"
-        print(error_details)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Internal Server Error: {e}")
+        print(f"Error during agent invocation: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
     
 
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)

@@ -63,6 +63,7 @@ class AgentState(TypedDict, total=False):
     route: Literal["hybrid", "answer", "end"]
     web_count: int
     rag_count: int
+    cache: bool
 
 def compute_confidence(state: AgentState, answer: str) -> int:
     rag_count = state.get("rag_count", 0)
@@ -85,6 +86,16 @@ def router_node(state: AgentState, config: RunnableConfig) -> AgentState:
 
     query = next((m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), "")
 
+    client = get_redis_client()
+
+    cached_ans = get_cached_answer(client, query)
+    if cached_ans:
+        print("cache hit")
+        return {
+            "messages": state["messages"] + [AIMessage(content=cached_ans)],  
+            "route": "cache",
+            "cache": True
+        }
 
     restricted_mode = config.get("configurable", {}).get("restricted_mode", False)
 
@@ -126,7 +137,8 @@ User: "Hello!" → end
     out = {
         "messages": state["messages"],
         "route": result.route,
-        "restricted_mode": restricted_mode
+        "restricted_mode": restricted_mode,
+        "cache": False
     }
 
     if result.route == "end":
@@ -216,17 +228,6 @@ def web_node(state: AgentState,config:RunnableConfig) -> AgentState:
 # --- Node 4: final answer ---
 def fusion_answer_node(state: AgentState) -> AgentState:
     user_q = next((m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), "")
-
-    redis_client = get_redis_client()
-
-    cached_response = get_cached_answer(redis_client, user_q)
-
-    if cached_response:
-        return {
-            **state,
-            "messages": state["messages"] + [AIMessage(content=cached_response)]
-        }
-
     rag_context = "\n".join(state.get("rag_chunks", []))
     web_context = "\n".join(state.get("web", []))
 
@@ -271,6 +272,12 @@ def fusion_answer_node(state: AgentState) -> AgentState:
             **state,
             "messages": state["messages"] + [AIMessage(content=final_answer)]
         }
+    print(state.keys())
+    if state['cache']:
+        return {
+        **state,
+        "messages": state["messages"],
+    }
 
     system_prompt = """
     You are a hybrid RAG system combining document knowledge and live web data.
@@ -311,7 +318,7 @@ def fusion_answer_node(state: AgentState) -> AgentState:
     }
 
 # --- Routing helpers ---
-def from_router(st: AgentState) -> Literal["hybrid", "answer", "end"]:
+def from_router(st: AgentState) -> Literal["hybrid", "answer", "end", "cache"]:
     return st["route"]
 
 # --- Build graph ---
@@ -333,6 +340,7 @@ def build_agent():
     {
         "hybrid": "rag_lookup", 
         "answer": "fusion_answer", 
+        "cache": "fusion_answer",
         "end": END
     }
 )

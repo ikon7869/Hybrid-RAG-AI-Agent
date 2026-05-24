@@ -7,7 +7,7 @@ from pinecone import Pinecone, ServerlessSpec
 from langchain_pinecone import PineconeVectorStore
 from langchain_huggingface import HuggingFaceEmbeddings 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_openai import OpenAIEmbeddings
+from pinecone_text.sparse import BM25Encoder
 
 # Import API keys from config (only Pinecone is needed here now)
 from config import PINECONE_API_KEY
@@ -41,7 +41,7 @@ def get_retriever():
     return vectorstore.as_retriever(
     search_type="mmr",
     search_kwargs={
-        "k": 5,
+        "k": 10,
         "fetch_k": 20,
         "lambda_mult": 0.7
     }

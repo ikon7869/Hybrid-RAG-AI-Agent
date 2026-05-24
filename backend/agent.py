@@ -15,7 +15,7 @@ from config import GROQ_API_KEY, TAVILY_API_KEY
 from vectorstore import get_retriever
 
 from redis_store import get_redis_client, store_cache, get_cached_answer
-
+from cross_encoder import get_cross_encoder, re_rank_docs
 # --- Tools ---
 os.environ["TAVILY_API_KEY"] = TAVILY_API_KEY
 tavily = TavilySearch(max_results=3, topic="general")
@@ -157,6 +157,8 @@ def rag_node(state: AgentState, config: RunnableConfig) -> AgentState:
     )
     retriever = get_retriever()
     docs = retriever.invoke(query)
+    reranked_docs = re_rank_docs(get_cross_encoder(), query, [d.page_content for d in docs])
+    print(f"RAG retrieved {len(docs)} docs, reranked to top {len(reranked_docs)}")
     restricted_mode = config.get("configurable", {}).get("restricted_mode", False)
 
     if not docs:
